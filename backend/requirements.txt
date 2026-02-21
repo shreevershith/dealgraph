@@ -1,0 +1,11 @@
+strands-agents
+strands-agents-tools
+boto3
+neo4j
+fastapi
+uvicorn
+python-dotenv
+ddtrace
+python-multipart
+requests
+PyPDF2

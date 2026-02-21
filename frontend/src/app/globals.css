@@ -1,0 +1,244 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 20% 4%;
+    --foreground: 240 10% 93%;
+    --card: 240 15% 8%;
+    --card-foreground: 240 10% 93%;
+    --popover: 240 15% 8%;
+    --popover-foreground: 240 10% 93%;
+    --primary: 256 58% 64%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 12% 12%;
+    --secondary-foreground: 240 10% 93%;
+    --muted: 240 12% 12%;
+    --muted-foreground: 240 10% 56%;
+    --accent: 240 12% 12%;
+    --accent-foreground: 240 10% 93%;
+    --destructive: 0 80% 70%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 12% 18%;
+    --input: 240 12% 18%;
+    --ring: 256 58% 64%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+    --radius: 0.5rem;
+
+    --dg-bg: #0a0a0f;
+    --dg-surface: #12121a;
+    --dg-border: #2a2a3a;
+    --dg-text: #e4e4ef;
+    --dg-dim: #8888a0;
+    --dg-accent: #6c5ce7;
+    --dg-accent-glow: rgba(108, 92, 231, 0.15);
+    --dg-success: #00d2a0;
+    --dg-warning: #ffa94d;
+    --dg-error: #ff6b6b;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-color: var(--dg-bg);
+    color: var(--dg-text);
+  }
+}
+
+@layer utilities {
+  .dg-surface {
+    background-color: var(--dg-surface);
+    border: 1px solid var(--dg-border);
+  }
+  .dg-glow {
+    box-shadow: 0 0 20px var(--dg-accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+}
+
+/* ── Dark scrollbar styling ── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a3a transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #2a2a3a;
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #3a3a4a;
+}
+
+/* ── Red flag pulsing border animation ── */
+@keyframes red-flag-glow {
+  0%, 100% {
+    border-left-color: #ff6b6b;
+    box-shadow: inset 3px 0 8px -3px rgba(255, 107, 107, 0.15);
+  }
+  50% {
+    border-left-color: #ff4444;
+    box-shadow: inset 3px 0 12px -3px rgba(255, 107, 107, 0.35);
+  }
+}
+
+.red-flag-row {
+  animation: red-flag-glow 2s ease-in-out infinite;
+}
+
+/* Red flag entrance flash */
+@keyframes red-flag-entrance {
+  0% {
+    background-color: rgba(255, 107, 107, 0.25);
+  }
+  100% {
+    background-color: rgba(255, 107, 107, 0.08);
+  }
+}
+
+.red-flag-entrance {
+  animation: red-flag-entrance 0.8s ease-out forwards;
+}
+
+/* ── Live indicator pulse ── */
+@keyframes live-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+
+.live-dot {
+  animation: live-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── CopilotKit dark theme overrides ── */
+:root {
+  --copilot-kit-primary-color: #6c5ce7;
+  --copilot-kit-contrast-color: #ffffff;
+  --copilot-kit-background-color: #12121a;
+  --copilot-kit-secondary-color: #1a1a26;
+  --copilot-kit-separator-color: #2a2a3a;
+  --copilot-kit-response-button-background-color: #1a1a26;
+  --copilot-kit-response-button-color: #e4e4ef;
+}
+
+.copilotkit-chat-wrapper .copilotKitChat {
+  background-color: #12121a;
+  color: #e4e4ef;
+  border: none;
+  height: 100%;
+}
+
+.copilotkit-chat-wrapper .copilotKitHeader {
+  display: none;
+}
+
+.copilotkit-chat-wrapper .copilotKitMessages {
+  background-color: transparent;
+}
+
+.copilotkit-chat-wrapper .copilotKitInput {
+  background-color: rgba(26, 26, 38, 0.5);
+  border-color: #2a2a3a;
+  color: #e4e4ef;
+}
+
+.copilotkit-chat-wrapper .copilotKitInput:focus-within {
+  border-color: #6c5ce7;
+}
+
+/* ── Full-page CopilotChat on /chat ── */
+.copilotkit-chat-fullpage {
+  overflow: hidden;
+}
+
+/* The CopilotChat component wraps in .copilotKitChat */
+.copilotkit-chat-fullpage .copilotKitChat {
+  display: flex !important;
+  flex-direction: column !important;
+  height: 100% !important;
+  border: none !important;
+  background-color: #0a0a0f !important;
+  color: #e4e4ef !important;
+}
+
+/* The copilotKitWindow wrapper also needs full height */
+.copilotkit-chat-fullpage .copilotKitWindow {
+  height: 100% !important;
+}
+
+/* Messages area should scroll */
+.copilotkit-chat-fullpage .copilotKitMessages {
+  flex: 1 !important;
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  background-color: transparent !important;
+}
+
+/* Input container sticks to bottom */
+.copilotkit-chat-fullpage .copilotKitInputContainer {
+  flex-shrink: 0 !important;
+  border-top: 1px solid #2a2a3a !important;
+  padding: 12px 16px !important;
+}
+
+.copilotkit-chat-fullpage .copilotKitInput {
+  background-color: #1a1a26 !important;
+  border: 1px solid #2a2a3a !important;
+  border-radius: 12px !important;
+  color: #e4e4ef !important;
+}
+
+.copilotkit-chat-fullpage .copilotKitInput:focus-within {
+  border-color: #6c5ce7 !important;
+}
+
+.copilotkit-chat-fullpage .copilotKitInput textarea {
+  color: #e4e4ef !important;
+}
+
+.copilotkit-chat-fullpage .copilotKitInput textarea::placeholder {
+  color: #6b6b80 !important;
+}
+
+/* Hide the CopilotKit header in full-page mode (we have our own) */
+.copilotkit-chat-fullpage .copilotKitHeader {
+  display: none !important;
+}
+
+/* Hide CopilotKit branding text (target only the <p> tag, not the input container) */
+p.poweredBy { display: none !important; }
+
+/* Hide debug buttons and dev console */
+[class*="devConsole"], [class*="DevConsole"] { display: none !important; }
+
+/* Hide reaction/feedback icons under messages */
+button[aria-label="Regenerate"], button[aria-label="Copy"], button[aria-label="Thumbs up"], button[aria-label="Thumbs down"] { display: none !important; }
+[class*="feedbackButtons"], [class*="FeedbackButtons"] { display: none !important; }
+[class*="ResponseActions"], [class*="responseActions"] { display: none !important; }
+
+/* Make tool cards full width in chat */
+[class*="toolCall"], [class*="ToolCall"] { width: 100% !important; max-width: 100% !important; }

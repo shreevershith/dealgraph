@@ -1,0 +1,15 @@
+Acme Payments — Series A Pitch Deck
+
+PROBLEM: Cross-border B2B payments are broken. Enterprise companies lose 2-5% on every international transaction. Payment routing is manual, slow, and expensive.
+
+MARKET: The global digital payments market exceeds $50 billion and is growing at 15% year-over-year, driven by cross-border commerce and enterprise digitization.
+
+SOLUTION: Acme Payments is a next-generation B2B payment orchestration platform. AI-powered routing across 50+ payment rails, real-time reconciliation with ML-powered matching, and a single API for global B2B payments.
+
+TRACTION: We have achieved 3x year-over-year revenue growth and serve 500 enterprise customers across 12 countries. Current ARR is $2.3M with 98% net revenue retention.
+
+TEAM: CEO Jane Chen spent 4 years leading payments infrastructure at Stripe from 2019 to 2023. She built and scaled Stripe's cross-border payment routing system. CTO Marcus Rivera was the ML Platform Lead at Scale AI from 2020 to 2023, where he built ML infrastructure powering 500+ enterprise customers.
+
+COMPETITION: There are no direct competitors in AI-powered B2B payment orchestration. Existing players focus on consumer payments or basic merchant processing. Acme is the only platform combining AI routing with full B2B reconciliation.
+
+ASK: Raising $15M Series A at $60M pre-money valuation.

@@ -1,0 +1,110 @@
+{
+  "status": "complete",
+  "claims": [
+    {
+      "id": 1,
+      "text": "Digital payments is a $50B+ market growing 15% YoY",
+      "category": "market_size",
+      "status": "verified",
+      "evidence": "Graph data: Digital Payments TAM $50B, growth 15.2% — matches claim"
+    },
+    {
+      "id": 2,
+      "text": "3x YoY revenue growth",
+      "category": "traction",
+      "status": "unverified",
+      "evidence": "No public revenue data found for Acme Payments"
+    },
+    {
+      "id": 3,
+      "text": "500 enterprise customers",
+      "category": "traction",
+      "status": "unverified",
+      "evidence": "Customer count not verifiable from public sources"
+    },
+    {
+      "id": 4,
+      "text": "CEO Jane Chen led payments at Stripe for 4 years",
+      "category": "team",
+      "status": "verified",
+      "evidence": "Graph: Jane Chen — Head of Payments Infrastructure at Stripe (2019-2023)"
+    },
+    {
+      "id": 5,
+      "text": "CTO Marcus Rivera built ML platform at Scale AI",
+      "category": "team",
+      "status": "verified",
+      "evidence": "Graph: Marcus Rivera — ML Platform Lead at Scale AI (2020-2023)"
+    },
+    {
+      "id": 6,
+      "text": "No direct competitors in AI-powered B2B payment orchestration",
+      "category": "competition",
+      "status": "red_flag",
+      "evidence": "Graph found 8 companies in Digital Payments: Stripe ($8.8B raised), Checkout.com ($1.8B), Ramp ($1.6B), Brex ($1.2B), Plaid ($734M), Square ($590M), Adyen ($266M), Mercury ($163M)"
+    }
+  ],
+  "score": {
+    "overall": 7.2,
+    "breakdown": {
+      "team": 8.5,
+      "market": 7.0,
+      "traction": 6.5,
+      "competition": 6.0,
+      "financials": 7.5
+    },
+    "recommendation": "Further Diligence"
+  },
+  "memo": "Deal memo for Acme Payments, Series A. Verdict: Further Diligence recommended, scoring 7.2 out of 10. The strongest signal is the team — CEO Jane Chen previously led payments infrastructure at Stripe for four years, and CTO Marcus Rivera built the ML platform at Scale AI. The $50B TAM claim in digital payments checks out against industry data showing 15.2% annual growth. However, Acme claims no direct competitors, but our analysis found 8 funded companies in the same market, including Stripe at $8.8B raised and Checkout.com at $1.8B. Traction claims of 3x YoY growth and 500 enterprise customers could not be independently verified. Bottom line: strong team, real market, but competitive pressure is significantly higher than the deck suggests. Recommend deeper diligence on defensibility and unit economics before proceeding.",
+  "audio_url": "/api/audio/fallback_memo.mp3",
+  "competitors": [
+    {
+      "name": "Stripe",
+      "total_raised": 8800000000,
+      "stage": "Late Stage",
+      "employee_count": 8000
+    },
+    {
+      "name": "Checkout.com",
+      "total_raised": 1800000000,
+      "stage": "Series D",
+      "employee_count": 1800
+    },
+    {
+      "name": "Ramp",
+      "total_raised": 1600000000,
+      "stage": "Series D",
+      "employee_count": 800
+    },
+    {
+      "name": "Brex",
+      "total_raised": 1200000000,
+      "stage": "Series D",
+      "employee_count": 1100
+    },
+    {
+      "name": "Plaid",
+      "total_raised": 734000000,
+      "stage": "Series D",
+      "employee_count": 1200
+    },
+    {
+      "name": "Square",
+      "total_raised": 590000000,
+      "stage": "Public",
+      "employee_count": 12000
+    },
+    {
+      "name": "Adyen",
+      "total_raised": 266000000,
+      "stage": "Public",
+      "employee_count": 4000
+    },
+    {
+      "name": "Mercury",
+      "total_raised": 163000000,
+      "stage": "Series B",
+      "employee_count": 400
+    }
+  ]
+}
