@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef, Component, ReactNode } from "react";
 import { AnalysisResult } from "@/lib/types";
-import { mockAnalysisResult } from "@/lib/mock-data";
 import { analyzeDeck, healthCheck, resolveAudioUrl } from "@/lib/api";
 import ClaimTracker from "@/components/ClaimTracker";
 import DealScorecard from "@/components/DealScorecard";
@@ -11,34 +10,41 @@ import DeckUpload from "@/components/DeckUpload";
 import DealChat from "@/components/DealChat";
 import CopilotPopupChat from "@/components/CopilotPopupChat";
 
-// ── Page-level Error Boundary ──
-
-interface ErrorBoundaryProps {
-  children: ReactNode;
-  onError: () => void;
-}
+// ── Page-level Error Boundary (shows real errors) ──
 
 interface ErrorBoundaryState {
-  hasError: boolean;
+  error: Error | null;
 }
 
-class PageErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
+class PageErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode }) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { error: null };
   }
 
-  static getDerivedStateFromError(): ErrorBoundaryState {
-    return { hasError: true };
-  }
-
-  componentDidCatch() {
-    this.props.onError();
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { error };
   }
 
   render() {
-    if (this.state.hasError) {
-      return null;
+    if (this.state.error) {
+      return (
+        <div className="flex h-screen flex-col items-center justify-center gap-4 p-8" style={{ backgroundColor: "var(--dg-bg, #12121a)" }}>
+          <div className="w-full max-w-xl rounded-xl border border-red-500/30 bg-red-500/5 p-6">
+            <h2 className="mb-2 text-lg font-bold text-red-400">Something went wrong</h2>
+            <pre className="mb-4 max-h-40 overflow-auto rounded-lg bg-black/40 p-3 text-xs text-red-300 whitespace-pre-wrap">
+              {this.state.error.message}
+              {this.state.error.stack && `\n\n${this.state.error.stack}`}
+            </pre>
+            <button
+              onClick={() => this.setState({ error: null })}
+              className="rounded-lg bg-red-500/20 px-4 py-2 text-sm font-medium text-red-300 border border-red-500/30 hover:bg-red-500/30 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      );
     }
     return this.props.children;
   }
@@ -219,7 +225,7 @@ const CASCADE = {
 function DealGraphApp() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [useMockData, setUseMockData] = useState(false);
+  const [backendOnline, setBackendOnline] = useState(false);
   const [backendChecked, setBackendChecked] = useState(false);
 
   // Toast state
@@ -240,18 +246,15 @@ function DealGraphApp() {
   const [showGraph, setShowGraph] = useState(false);
   const [showVoice, setShowVoice] = useState(false);
 
-  // Health check on mount - auto-detect backend
+  // Health check on mount
   useEffect(() => {
     let cancelled = false;
     healthCheck().then((ok) => {
       if (cancelled) return;
       setBackendChecked(true);
-      if (ok) {
-        setUseMockData(false);
-        console.log("Backend is reachable, using API mode");
-      } else {
-        setUseMockData(true);
-        console.log("Backend not available, using mock data");
+      setBackendOnline(ok);
+      if (!ok) {
+        console.warn("Backend not reachable — start the backend server on port 8000");
       }
     });
     return () => { cancelled = true; };
@@ -288,55 +291,28 @@ function DealGraphApp() {
     return () => timers.forEach(clearTimeout);
   }, [analysis]);
 
-  // Ctrl+M toggles mock/API mode, Ctrl+K toggles copilot/status panel
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      if (e.key === "m") {
-        e.preventDefault();
-        setUseMockData((prev) => {
-          const next = !prev;
-          showToast(next ? "Switched to demo mode" : "Switched to API mode");
-          return next;
-        });
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [showToast]);
 
   const analyzingRef = useRef(false);
   const handleAnalyze = useCallback(
     async (deckText: string) => {
-      // Prevent concurrent/duplicate calls
       if (analyzingRef.current) return;
       analyzingRef.current = true;
       setLoading(true);
       setAnalysis(null);
 
       try {
-        if (useMockData) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          setAnalysis(mockAnalysisResult);
-        } else {
-          const result = await analyzeDeck(deckText);
-          // Only accept results that have actual data
-          if (result && (result.claims?.length > 0 || result.score?.overall > 0 || result.memo)) {
-            setAnalysis(result);
-          } else {
-            console.warn("Analysis returned empty - using result anyway", result);
-            setAnalysis(result);
-          }
-        }
+        const result = await analyzeDeck(deckText);
+        setAnalysis(result);
       } catch (err) {
         console.error("Analysis failed:", err);
-        showToast("Analysis failed - check backend connection");
+        const msg = err instanceof Error ? err.message : String(err);
+        showToast(`Analysis failed: ${msg}`);
       } finally {
         setLoading(false);
         analyzingRef.current = false;
       }
     },
-    [useMockData, showToast]
+    [showToast]
   );
 
   // Don't render until health check completes to avoid flash
@@ -401,48 +377,39 @@ function DealGraphApp() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Mock/API toggle */}
-          <button
-            onClick={() => {
-              setUseMockData((prev) => {
-                const next = !prev;
-                showToast(next ? "Switched to demo mode" : "Switched to API mode");
-                return next;
-              });
-            }}
-            className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[11px] transition-all duration-200 hover:brightness-125"
+          <span
+            className="flex items-center gap-2 rounded-full px-2.5 py-1 text-[10px] font-medium"
             style={{
-              backgroundColor: useMockData
-                ? "rgba(0, 210, 160, 0.1)"
-                : "rgba(108, 92, 231, 0.1)",
-              color: useMockData ? "var(--dg-success)" : "var(--dg-accent)",
-              border: `1px solid ${useMockData ? "rgba(0, 210, 160, 0.2)" : "rgba(108, 92, 231, 0.2)"}`,
+              backgroundColor: backendOnline ? "rgba(0, 210, 160, 0.1)" : "rgba(255, 100, 100, 0.1)",
+              color: backendOnline ? "var(--dg-success)" : "#ff6464",
+              border: `1px solid ${backendOnline ? "rgba(0, 210, 160, 0.2)" : "rgba(255, 100, 100, 0.2)"}`,
             }}
-            title="Toggle mock/API mode (Ctrl+M)"
           >
             <div
               className="h-1.5 w-1.5 rounded-full"
-              style={{
-                backgroundColor: useMockData
-                  ? "var(--dg-success)"
-                  : "var(--dg-accent)",
-              }}
+              style={{ backgroundColor: backendOnline ? "var(--dg-success)" : "#ff6464" }}
             />
-            {useMockData ? "Demo" : "API"}
-            <span className="text-[9px] opacity-50">Ctrl+M</span>
-          </button>
+            {backendOnline ? "Backend Connected" : "Backend Offline"}
+          </span>
 
-          {/* Status indicator */}
           {analysis && (
             <span
               className="rounded-full px-2.5 py-1 text-[10px] font-medium"
-              style={{
-                backgroundColor: "rgba(0, 210, 160, 0.1)",
-                color: "var(--dg-success)",
-                border: "1px solid rgba(0, 210, 160, 0.2)",
-              }}
+              style={
+                analysis.status === "error"
+                  ? {
+                      backgroundColor: "rgba(255, 100, 100, 0.1)",
+                      color: "#ff6464",
+                      border: "1px solid rgba(255, 100, 100, 0.2)",
+                    }
+                  : {
+                      backgroundColor: "rgba(0, 210, 160, 0.1)",
+                      color: "var(--dg-success)",
+                      border: "1px solid rgba(0, 210, 160, 0.2)",
+                    }
+              }
             >
-              Analysis Complete
+              {analysis.status === "error" ? "Analysis Failed" : "Analysis Complete"}
             </span>
           )}
         </div>
@@ -608,7 +575,9 @@ function DealGraphApp() {
                         <polygon points="5 3 19 12 5 21 5 3" />
                       </svg>
                     </div>
-                    <p className="text-xs text-[var(--dg-dim)] opacity-60">Audio memo after analysis</p>
+                    <p className="text-xs text-[var(--dg-dim)] opacity-60">
+                      {analysis?.status === "error" ? "No audio — analysis did not complete" : "Audio memo after analysis"}
+                    </p>
                   </div>
                 )}
               </div>
@@ -646,12 +615,12 @@ function DealGraphApp() {
       >
         <span className="text-[10px] text-[var(--dg-dim)]">Built with</span>
         {[
-          { name: "AWS Bedrock", color: "#f59e0b" },
+          { name: "Groq", color: "#f59e0b" },
           { name: "Strands Agents", color: "#f59e0b" },
-          { name: "Neo4j", color: "#22c55e" },
+          { name: "Memgraph", color: "#22c55e" },
           { name: "CopilotKit", color: "#a78bfa" },
-          { name: "MiniMax", color: "#3b82f6" },
-          { name: "Datadog", color: "#a78bfa" },
+          { name: "edge-tts", color: "#3b82f6" },
+          { name: "Next.js", color: "#e4e4ef" },
         ].map((t) => (
           <span
             key={t.name}
@@ -676,106 +645,10 @@ function DealGraphApp() {
   );
 }
 
-// ── Exported wrapper with error boundary ──
-
 export default function Home() {
-  const [errorFallback, setErrorFallback] = useState(false);
-
-  if (errorFallback) {
-    // Render a minimal fallback that loads mock data directly
-    return <FallbackApp />;
-  }
-
   return (
-    <PageErrorBoundary onError={() => setErrorFallback(true)}>
+    <PageErrorBoundary>
       <DealGraphApp />
     </PageErrorBoundary>
-  );
-}
-
-// ── Fallback app when error boundary catches ──
-
-function FallbackApp() {
-  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const handleAnalyze = useCallback(async () => {
-    setLoading(true);
-    setAnalysis(null);
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    setAnalysis(mockAnalysisResult);
-    setLoading(false);
-  }, []);
-
-  return (
-    <div
-      className="flex h-screen flex-col overflow-hidden"
-      style={{ backgroundColor: "var(--dg-bg)" }}
-    >
-      <header
-        className="relative z-10 flex h-14 shrink-0 items-center justify-between border-b border-[var(--dg-border)] px-6"
-        style={{
-          backgroundColor: "rgba(18, 18, 26, 0.8)",
-          backdropFilter: "blur(12px)",
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <GraphIcon />
-          <h1
-            className="text-lg font-semibold tracking-tight"
-            style={{
-              background: "linear-gradient(135deg, #e4e4ef 0%, #6c5ce7 100%)",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}
-          >
-            DealGraph
-          </h1>
-          <span
-            className="rounded-full px-2 py-0.5 text-[10px] font-medium"
-            style={{
-              backgroundColor: "rgba(255, 169, 77, 0.1)",
-              color: "var(--dg-warning)",
-              border: "1px solid rgba(255, 169, 77, 0.2)",
-            }}
-          >
-            Safe Mode
-          </span>
-        </div>
-      </header>
-
-      <div className="flex flex-1 items-center justify-center">
-        {loading ? (
-          <div className="flex items-center gap-3">
-            <div
-              className="h-5 w-5 animate-spin rounded-full border-2 border-transparent"
-              style={{ borderTopColor: "var(--dg-accent)" }}
-            />
-            <span className="text-sm text-[var(--dg-dim)]">Loading demo data...</span>
-          </div>
-        ) : analysis ? (
-          <div className="w-full max-w-4xl p-6">
-            <DealScorecard score={analysis.score} />
-          </div>
-        ) : (
-          <div className="text-center">
-            <p className="mb-3 text-sm text-[var(--dg-dim)]">
-              Something went wrong. Running in safe mode.
-            </p>
-            <button
-              onClick={handleAnalyze}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-white"
-              style={{
-                backgroundColor: "var(--dg-accent)",
-                boxShadow: "0 0 12px rgba(108, 92, 231, 0.3)",
-              }}
-            >
-              Load Demo Data
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
   );
 }

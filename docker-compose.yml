@@ -1,0 +1,12 @@
+services:
+  memgraph:
+    image: memgraph/memgraph:latest
+    ports:
+      - "7687:7687"   # Bolt protocol
+    volumes:
+      - memgraph-data:/var/lib/memgraph
+    command: ["--bolt-server-name-for-init=Neo4j/"]
+    restart: unless-stopped
+
+volumes:
+  memgraph-data:

@@ -1,6 +1,16 @@
 from strands import Agent, tool
-from strands.models.bedrock import BedrockModel
 from tools.neo4j_tools import find_competitors, verify_founder, check_market_data
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  HACKATHON BUILD — AWS Bedrock (Claude Sonnet 4)                           ║
+# ║  from strands.models.bedrock import BedrockModel                           ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  OPEN-SOURCE VERSION — Supports Ollama (local) / Groq / Together.ai        ║
+# ║  Set LLM_PROVIDER env var to switch. See model_config.py for details.      ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+from model_config import get_model
 
 
 @tool
@@ -51,8 +61,16 @@ Be specific in evidence. Cite exact numbers from the graph.
 If a company claims "no competitors" but you find competitors, that is a RED FLAG.
 Output ONLY valid JSON. Do NOT use emojis."""
 
+# --- HACKATHON: AWS Bedrock ---
+# fact_checker = Agent(
+#     model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0"),
+#     system_prompt=FACT_CHECKER_PROMPT,
+#     tools=[query_competitors, check_founder_background, validate_market_size],
+#     callback_handler=None
+# )
+
 fact_checker = Agent(
-    model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0"),
+    model=get_model(),
     system_prompt=FACT_CHECKER_PROMPT,
     tools=[query_competitors, check_founder_background, validate_market_size],
     callback_handler=None

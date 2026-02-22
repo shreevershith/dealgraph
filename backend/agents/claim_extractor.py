@@ -1,5 +1,15 @@
 from strands import Agent, tool
-from strands.models.bedrock import BedrockModel
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  HACKATHON BUILD — AWS Bedrock (Claude Sonnet 4)                           ║
+# ║  from strands.models.bedrock import BedrockModel                           ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  OPEN-SOURCE VERSION — Supports Ollama (local) / Groq / Together.ai        ║
+# ║  Set LLM_PROVIDER env var to switch. See model_config.py for details.      ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+from model_config import get_model
 
 
 @tool
@@ -31,8 +41,16 @@ Categories:
 Be thorough. Extract at least 5-10 claims. Focus on claims that CAN be checked against external data.
 Output ONLY valid JSON - no explanation, no markdown fences, no emojis."""
 
+# --- HACKATHON: AWS Bedrock ---
+# claim_extractor = Agent(
+#     model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0"),
+#     system_prompt=CLAIM_EXTRACTOR_PROMPT,
+#     tools=[parse_pitch_deck],
+#     callback_handler=None
+# )
+
 claim_extractor = Agent(
-    model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0"),
+    model=get_model(),
     system_prompt=CLAIM_EXTRACTOR_PROMPT,
     tools=[parse_pitch_deck],
     callback_handler=None

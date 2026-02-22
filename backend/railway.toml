@@ -1,0 +1,7 @@
+# Railway deploy config for DealGraph backend.
+# In Railway: set this service's Root Directory to "backend" so this file is used.
+
+[deploy]
+startCommand = "uvicorn main:app --host 0.0.0.0 --port $PORT"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 10

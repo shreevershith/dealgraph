@@ -1,11 +1,17 @@
 strands-agents
 strands-agents-tools
-boto3
+ag-ui-strands
 neo4j
 fastapi
 uvicorn
 python-dotenv
-ddtrace
 python-multipart
 requests
 PyPDF2
+edge-tts
+openai
+ollama
+
+# ── HACKATHON DEPENDENCIES (no longer needed for open-source build) ──
+# boto3              # AWS SDK — was used for Bedrock (Claude Sonnet 4)
+# ddtrace            # Datadog APM/LLMObs tracing

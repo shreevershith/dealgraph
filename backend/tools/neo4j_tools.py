@@ -4,13 +4,38 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-NEO4J_URI = os.getenv("NEO4J_URI")
-NEO4J_USER = os.getenv("NEO4J_USER")
-NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  HACKATHON BUILD — Neo4j AuraDB (cloud-managed graph database)             ║
+# ║  We used Neo4j AuraDB free tier during the hackathon with the neo4j        ║
+# ║  Python driver and Cypher queries for VC knowledge-graph fact-checking.    ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+# NEO4J_URI = os.getenv("NEO4J_URI")
+# NEO4J_USER = os.getenv("NEO4J_USER")
+# NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+#
+# driver = None
+# if NEO4J_URI and NEO4J_USER and NEO4J_PASSWORD:
+#     driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  OPEN-SOURCE VERSION — Memgraph (self-hosted, Bolt-compatible)             ║
+# ║  Memgraph speaks the same Bolt protocol and Cypher query language as       ║
+# ║  Neo4j, so the same Python driver and all queries below work unchanged.    ║
+# ║  Run Memgraph via: docker compose up memgraph                              ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+MEMGRAPH_URI = os.getenv("MEMGRAPH_URI", "bolt://localhost:7687")
+MEMGRAPH_USER = os.getenv("MEMGRAPH_USER", "")
+MEMGRAPH_PASSWORD = os.getenv("MEMGRAPH_PASSWORD", "")
 
 driver = None
-if NEO4J_URI and NEO4J_USER and NEO4J_PASSWORD:
-    driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+try:
+    auth = (MEMGRAPH_USER, MEMGRAPH_PASSWORD) if MEMGRAPH_USER else None
+    driver = GraphDatabase.driver(MEMGRAPH_URI, auth=auth)
+    driver.verify_connectivity()
+    print("[DealGraph] Connected to Memgraph")
+except Exception as e:
+    print(f"[DealGraph] Memgraph connection skipped: {e}")
+    driver = None
 
 
 def run_query(cypher: str, params: dict = None) -> list:
@@ -24,7 +49,6 @@ def run_query(cypher: str, params: dict = None) -> list:
 
 def find_competitors(company_name: str) -> list:
     """Find companies in the same market as the given company (fuzzy, case-insensitive)."""
-    # Try exact match first, then CONTAINS fallback for PDF-extracted names
     cypher = """
     MATCH (c:Company)
     WHERE toLower(c.name) = toLower($name)

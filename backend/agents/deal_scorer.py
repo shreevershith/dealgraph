@@ -1,8 +1,18 @@
 import json
 
 from strands import Agent, tool
-from strands.models.bedrock import BedrockModel
 from agents import shared_state
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  HACKATHON BUILD — AWS Bedrock (Claude Sonnet 4)                           ║
+# ║  from strands.models.bedrock import BedrockModel                           ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  OPEN-SOURCE VERSION — Supports Ollama (local) / Groq / Together.ai        ║
+# ║  Set LLM_PROVIDER env var to switch. See model_config.py for details.      ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
+from model_config import get_model
 
 
 @tool
@@ -30,8 +40,6 @@ def compute_deal_score(team: float, market: float, traction: float, competition:
         "recommendation": rec
     }
     score_json = json.dumps(result)
-    # Write directly to shared_state so we capture the structured data,
-    # not the agent's prose commentary that wraps it
     shared_state.analysis_state["score"] = score_json
     print(f"[DEBUG compute_deal_score] Saved score to shared_state: {score_json}")
     return score_json
@@ -53,8 +61,16 @@ If claims were red-flagged (contradicted by data), score that dimension lower.
 If claims were unverifiable, dock points for lack of transparency.
 Do NOT use emojis in your output."""
 
+# --- HACKATHON: AWS Bedrock ---
+# deal_scorer = Agent(
+#     model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0"),
+#     system_prompt=SCORER_PROMPT,
+#     tools=[compute_deal_score],
+#     callback_handler=None
+# )
+
 deal_scorer = Agent(
-    model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0"),
+    model=get_model(),
     system_prompt=SCORER_PROMPT,
     tools=[compute_deal_score],
     callback_handler=None
