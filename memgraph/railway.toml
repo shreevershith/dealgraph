@@ -1,0 +1,6 @@
+# Railway config for Memgraph service.
+# Set this service's Root Directory to "memgraph" so Railway uses this file.
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
