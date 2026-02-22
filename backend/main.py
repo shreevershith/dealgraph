@@ -36,7 +36,11 @@ if sys.platform == "win32":
 # except Exception:
 #     pass
 
-from fastapi import FastAPI, Request, UploadFile, File
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, field_validator
@@ -72,8 +76,41 @@ _raw = os.getenv("CORS_ORIGINS", "*").strip()
 CORS_ORIGINS = [o.strip() for o in _raw.split(",") if o.strip()]
 # When using "*", credentials must be False (CORS spec). When listing explicit origins, credentials can be True.
 CORS_CREDENTIALS = "*" not in CORS_ORIGINS and len(CORS_ORIGINS) > 0
+ALLOW_ANY_ORIGIN = not CORS_ORIGINS or "*" in CORS_ORIGINS
+
+
+class EnsureCORSHeadersMiddleware(BaseHTTPMiddleware):
+    """Inject CORS headers into every response so they are always present (fixes preflight/edge cases)."""
+
+    async def dispatch(self, request: Request, call_next):
+        origin = request.headers.get("origin", "").strip()
+        if request.method == "OPTIONS":
+            # Preflight: return 200 with CORS headers immediately
+            allow_origin = "*" if ALLOW_ANY_ORIGIN else (origin if origin in CORS_ORIGINS else None)
+            if allow_origin is None:
+                return Response(status_code=403)
+            headers = {
+                "Access-Control-Allow-Origin": allow_origin,
+                "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Max-Age": "86400",
+            }
+            if CORS_CREDENTIALS:
+                headers["Access-Control-Allow-Credentials"] = "true"
+            return Response(status_code=200, headers=headers)
+        response = await call_next(request)
+        allow_origin = "*" if ALLOW_ANY_ORIGIN else (origin if origin in CORS_ORIGINS else None)
+        if allow_origin:
+            response.headers["Access-Control-Allow-Origin"] = allow_origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            if CORS_CREDENTIALS:
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response
+
 
 app = FastAPI(title="DealGraph API", redirect_slashes=False)
+app.add_middleware(EnsureCORSHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS if CORS_ORIGINS else ["*"],
