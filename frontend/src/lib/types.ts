@@ -25,6 +25,7 @@ export interface Competitor {
   total_raised: number;
   stage: string;
   employee_count?: number;
+  market?: string;
 }
 
 export interface AnalysisResult {

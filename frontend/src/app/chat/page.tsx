@@ -86,7 +86,7 @@ function CompetitorCard({
   }
 
   const totalFunding = competitors.reduce((s, c) => s + c.total_raised, 0);
-  const market = (competitors[0] as Record<string, unknown>)?.market as string | undefined;
+  const market = competitors[0]?.market;
   const sorted = [...competitors].sort((a, b) => b.total_raised - a.total_raised);
   const maxFunding = sorted[0]?.total_raised || 1;
 
