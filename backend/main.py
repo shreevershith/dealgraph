@@ -68,15 +68,19 @@ logging.basicConfig(
 AUDIO_DIR = Path(__file__).parent / "audio"
 AUDIO_DIR.mkdir(exist_ok=True)
 
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+_raw = os.getenv("CORS_ORIGINS", "*").strip()
+CORS_ORIGINS = [o.strip() for o in _raw.split(",") if o.strip()]
+# When using "*", credentials must be False (CORS spec). When listing explicit origins, credentials can be True.
+CORS_CREDENTIALS = "*" not in CORS_ORIGINS and len(CORS_ORIGINS) > 0
 
 app = FastAPI(title="DealGraph API", redirect_slashes=False)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in CORS_ORIGINS],
-    allow_credentials=True,
+    allow_origins=CORS_ORIGINS if CORS_ORIGINS else ["*"],
+    allow_credentials=CORS_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 MAX_DECK_TEXT_CHARS = 500_000
