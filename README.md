@@ -17,6 +17,7 @@ AI-powered due diligence copilot for venture capital investors. Upload any start
 - [Environment Variables](#environment-variables)
 - [How It Works](#how-it-works)
 - [API Endpoints](#api-endpoints)
+- [Telemetry](#telemetry-optional)
 - [Deployment](#deployment)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
@@ -187,11 +188,11 @@ MEMGRAPH_URI=bolt://localhost:7687
 | `EDGE_TTS_VOICE`   | No       | TTS voice (default: `en-US-GuyNeural`)             |
 | `NEXT_PUBLIC_API_URL` | No    | Backend URL for frontend (default: `http://localhost:8000`) |
 | **Telemetry**      |          | Optional observability                             |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | No | SigNoz: OTLP endpoint (e.g. `https://ingest.us.signoz.cloud:443`) |
-| `OTEL_EXPORTER_OTLP_HEADERS` | No | SigNoz: e.g. `signoz-ingestion-key=<key>`          |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | No | SigNoz: OTLP endpoint (e.g. `https://ingest.us.signoz.cloud`) |
+| `OTEL_EXPORTER_OTLP_HEADERS` | No | SigNoz: `signoz-ingestion-key=<your-ingestion-key>` |
 | `LANGFUSE_SECRET_KEY` | No   | Langfuse: LLM tracing (Groq/Together/OpenAI)       |
 | `LANGFUSE_PUBLIC_KEY` | No   | Langfuse: public key                               |
-| `LANGFUSE_BASE_URL` | No      | Langfuse server (default: `https://cloud.langfuse.com`) |
+| `LANGFUSE_BASE_URL`  | No   | Langfuse server (default: `https://cloud.langfuse.com`) |
 
 ## How It Works
 
@@ -240,7 +241,7 @@ PitchDeck (PDF/text)
 
 | Endpoint            | Method | Description                            |
 | ------------------- | ------ | -------------------------------------- |
-| `/api/health`       | GET    | Health check                           |
+| `/api/health`       | GET    | Health check (includes `memgraph`: ok / disabled / error) |
 | `/api/analyze`      | POST   | Run full analysis pipeline             |
 | `/api/extract-pdf`  | POST   | Extract text from uploaded PDF         |
 | `/api/audio/{file}` | GET    | Serve generated audio files            |
@@ -251,7 +252,7 @@ PitchDeck (PDF/text)
 DealGraph supports two optional observability integrations:
 
 - **SigNoz** — Application performance and distributed tracing (OpenTelemetry). Set `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and optionally `OTEL_EXPORTER_OTLP_HEADERS` (e.g. `signoz-ingestion-key=<key>` for SigNoz Cloud). FastAPI requests are auto-instrumented.
-- **Langfuse** — LLM observability (prompts, completions, token usage, latency). Set `LANGFUSE_SECRET_KEY` and `LANGFUSE_PUBLIC_KEY`. The backend patches the OpenAI-compatible client at startup, so all Groq, Together, and OpenAI calls are traced. Ollama runs are not traced.
+- **Langfuse** — LLM observability (prompts, completions, token usage, latency). Set `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, and optionally `LANGFUSE_BASE_URL` (e.g. `https://eu.cloud.langfuse.com`). The backend patches the OpenAI-compatible client at startup, so all Groq, Together, and OpenAI calls are traced. Ollama runs are not traced.
 
 Both are no-ops when the corresponding env vars are unset. See `.env.example` for full variable names.
 
@@ -259,13 +260,15 @@ Both are no-ops when the corresponding env vars are unset. See `.env.example` fo
 
 ### Backend on Railway
 
-See the [Railway deployment guide](docs/memgraph-railway-option-b.md) for step-by-step instructions. Key environment variables to set:
+See the [Railway deployment guide](docs/memgraph-railway-option-b.md) for step-by-step instructions, including optional Memgraph and seed-on-start. Key environment variables:
 
 ```
 LLM_PROVIDER=groq
 GROQ_API_KEY=<your key>
 TAVILY_API_KEY=<your key>
 CORS_ORIGINS=https://your-frontend.vercel.app
+# Optional: Memgraph (same project) — set after adding Memgraph service
+MEMGRAPH_URI=bolt://memgraph.railway.internal:7687
 ```
 
 ### Frontend on Vercel
@@ -304,6 +307,18 @@ CORS_ORIGINS=https://your-frontend.vercel.app
 **Problem**: Audio not playing
 
 **Solution**: Ensure `edge-tts` is installed (`pip install edge-tts`). The backend generates a fallback audio file if TTS fails.
+
+---
+
+**Problem**: SigNoz shows 401 or no traces
+
+**Solution**: Check `OTEL_EXPORTER_OTLP_HEADERS` is set to `signoz-ingestion-key=<your-ingestion-key>` (from SigNoz Cloud → Settings → Ingestion). Use the correct region endpoint (e.g. `https://ingest.us.signoz.cloud` for US).
+
+---
+
+**Problem**: Langfuse shows no data
+
+**Solution**: Set `LANGFUSE_SECRET_KEY` and `LANGFUSE_PUBLIC_KEY` on the **backend** (e.g. Railway Variables). Use an LLM provider that goes through the patched client (Groq, Together, or OpenAI — not Ollama). Redeploy and run an analysis; check deploy logs for `Langfuse: openai module patched for LLM tracing`.
 
 ## License
 
