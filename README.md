@@ -2,8 +2,13 @@
 
 AI-powered due diligence copilot for venture capital investors. Upload any startup's pitch deck and get a confidence-scored investment analysis with verified claims, competitive intelligence, and a voice-narrated deal memo.
 
+## Live Demo
+
+**[→ DealGraph (dealgraph-pink.vercel.app)](https://dealgraph-pink.vercel.app/)**
+
 ## Table of Contents
 
+- [Live Demo](#live-demo)
 - [Overview](#overview)
 - [Key Features](#key-features)
 - [Tech Stack](#tech-stack)
@@ -186,7 +191,7 @@ MEMGRAPH_URI=bolt://localhost:7687
 | `OTEL_EXPORTER_OTLP_HEADERS` | No | SigNoz: e.g. `signoz-ingestion-key=<key>`          |
 | `LANGFUSE_SECRET_KEY` | No   | Langfuse: LLM tracing (Groq/Together/OpenAI)       |
 | `LANGFUSE_PUBLIC_KEY` | No   | Langfuse: public key                               |
-| `LANGFUSE_HOST`    | No       | Langfuse server (default: `https://cloud.langfuse.com`) |
+| `LANGFUSE_BASE_URL` | No      | Langfuse server (default: `https://cloud.langfuse.com`) |
 
 ## How It Works
 
