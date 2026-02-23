@@ -172,13 +172,26 @@ export default function CompetitiveGraph({
       });
     }
 
-    // Build radius scale - logarithmic
-    const fundingValues = graphCompetitors.map((c) => c.total_raised);
+    // Build radius scale - logarithmic; safe for 0/undefined (e.g. web-extracted competitors with no funding)
+    const fundingValues = graphCompetitors.map((c) => {
+      const v = Number(c.total_raised);
+      return Number.isFinite(v) && v > 0 ? v : 1;
+    });
+    const minF = Math.min(...fundingValues);
+    const maxF = Math.max(...fundingValues);
+    const domainMin = minF > 0 ? minF : 1;
+    const domainMax = maxF >= domainMin ? maxF : domainMin * 1000;
     const radiusScale = d3
       .scaleLog()
-      .domain([Math.min(...fundingValues), Math.max(...fundingValues)])
+      .domain([domainMin, domainMax])
       .range([8, 45])
       .clamp(true);
+
+    const safeRadius = (c: (typeof graphCompetitors)[0]): number => {
+      const v = Number(c.total_raised);
+      if (Number.isFinite(v) && v > 0) return radiusScale(v);
+      return 12; // fallback for 0/undefined so SVG r is never NaN
+    };
 
     // Build nodes - start off-screen for fly-in effect
     const nodes: GraphNode[] = graphCompetitors.map((c, idx) => {
@@ -187,10 +200,10 @@ export default function CompetitiveGraph({
       return {
         id: c.name,
         name: c.name,
-        total_raised: c.total_raised,
+        total_raised: c.total_raised ?? 0,
         stage: c.stage,
         employee_count: c.employee_count,
-        radius: radiusScale(c.total_raised),
+        radius: safeRadius(c),
         isTarget,
         x: isTarget ? width / 2 : width / 2 + Math.cos(angle) * Math.max(width, height),
         y: isTarget ? height / 2 : height / 2 + Math.sin(angle) * Math.max(width, height),

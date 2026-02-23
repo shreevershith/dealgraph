@@ -11,7 +11,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-MEMGRAPH_URI = os.getenv("MEMGRAPH_URI", "").strip()
+# Prefer MEMGRAPH_URI; fall back to Railway-injected URL when backend references Memgraph service
+MEMGRAPH_URI = (
+    os.getenv("MEMGRAPH_URI", "").strip()
+    or os.getenv("MEMGRAPH_PRIVATE_URL", "").strip()
+    or os.getenv("MEMGRAPH_URL", "").strip()
+)
 MEMGRAPH_USER = os.getenv("MEMGRAPH_USER", "")
 MEMGRAPH_PASSWORD = os.getenv("MEMGRAPH_PASSWORD", "")
 
