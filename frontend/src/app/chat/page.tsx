@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { CopilotChat } from "@copilotkit/react-ui";
 import { useCopilotAction, useCopilotReadable } from "@copilotkit/react-core";
 import { AnalysisResult, Competitor } from "@/lib/types";
-import { scoreColor } from "@/lib/utils";
 import { CompetitorCard, FounderCard, MarketCard, DealSummaryCard } from "@/components/cards";
 
 export default function ChatPage() {
