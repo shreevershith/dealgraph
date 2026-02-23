@@ -18,7 +18,7 @@ venv/
 .env.local
 .env.*.local
 
-# Audio (generated voice memos)
+# Audio
 audio/*.mp3
 backend/audio/*.mp3
 

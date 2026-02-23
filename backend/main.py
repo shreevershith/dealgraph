@@ -451,6 +451,23 @@ def _build_response_from_shared_state(company_name: str = "") -> dict | None:
     # One node per company: Memgraph can return the same company for multiple markets
     competitors = _dedupe_competitors_by_name(competitors)
 
+    # If memo is the auto-generated fallback but score/claims don't match, rebuild memo so voice memo matches the UI
+    if claims and memo and "Deal memo (auto-generated)" in memo:
+        v_count = sum(1 for c in claims if isinstance(c, dict) and (c.get("status") or "").strip().lower() == "verified")
+        r_count = sum(1 for c in claims if isinstance(c, dict) and (c.get("status") or "").strip().lower() == "red_flag")
+        u_count = len(claims) - v_count - r_count
+        b = score.get("breakdown") or {}
+        expected_line = f"- {v_count} verified, {r_count} red flags, {u_count} unverified."
+        if expected_line not in memo or str(score.get("overall", 0)) not in memo:
+            memo = (
+                f"# Deal memo (auto-generated)\n\n"
+                f"**Overall score:** {score.get('overall', 0)}/10 · **Recommendation:** {score.get('recommendation', 'Further Diligence')}\n\n"
+                f"## Score breakdown\n"
+                f"- Team: {b.get('team', 0)}/10\n- Market: {b.get('market', 0)}/10\n- Traction: {b.get('traction', 0)}/10\n"
+                f"- Competition: {b.get('competition', 0)}/10\n- Financials: {b.get('financials', 0)}/10\n\n"
+                f"## Claims\n- {v_count} verified, {r_count} red flags, {u_count} unverified.\n"
+            )
+
     return {
         "status": "complete",
         "claims": claims if claims else [],
@@ -667,66 +684,6 @@ def _build_voice_briefing_script(
     return script
 
 
-def _build_written_briefing_memo(
-    score: dict,
-    claims: list[dict],
-    recommendation: str,
-    overall: float,
-    verified_count: int,
-    red_count: int,
-) -> str:
-    """Build the written memo to match the voice briefing: verdict, strengths, red flags, recommendation."""
-    b = score.get("breakdown") or {}
-    lines = [
-        "# Deal memo",
-        "",
-        f"**Verdict:** {recommendation} — {overall}/10.",
-        "",
-        "## Key strengths",
-    ]
-    verified_claims = [
-        (c.get("text") or c.get("claim_text") or "").strip()
-        for c in claims
-        if isinstance(c, dict) and (c.get("status") or "").strip().lower() == "verified"
-    ]
-    if verified_claims:
-        for v in verified_claims[:3]:
-            if v:
-                lines.append(f"- {v[:200]}" + ("..." if len(v) > 200 else ""))
-    elif verified_count > 0:
-        lines.append(f"- {verified_count} claims verified with supporting data.")
-    else:
-        lines.append("- No claims verified in this run.")
-    lines.append("")
-    lines.append("## Red flags")
-    if red_count > 0:
-        red_claims = [
-            (c.get("text") or c.get("claim_text") or "").strip()[:150]
-            for c in claims
-            if isinstance(c, dict)
-            and (
-                (c.get("status") or "").strip().lower() in ("red_flag", "contradicted", "flagged")
-                or "red" in (c.get("status") or "").lower()
-            )
-        ]
-        for r in red_claims[:3]:
-            if r:
-                lines.append(f"- {r}")
-        if not red_claims:
-            lines.append(f"- {red_count} red flag(s) to follow up.")
-    else:
-        lines.append("- None identified.")
-    lines.append("")
-    lines.append("## Score snapshot")
-    lines.append(
-        f"Team {b.get('team', 5)}/10 · Market {b.get('market', 5)}/10 · Traction {b.get('traction', 5)}/10 · "
-        f"Competition {b.get('competition', 5)}/10 · Financials {b.get('financials', 5)}/10."
-    )
-    lines.append("")
-    lines.append(f"**Bottom line:** {recommendation}.")
-    return "\n".join(lines)
-
-
 def _generate_memo_from_state() -> None:
     """Generate memo and voice briefing from shared_state when the memo_writer agent did not run.
     Writes state['memo'] and state['audio_filename'] so the pipeline always delivers a memo and audio.
@@ -773,7 +730,27 @@ def _generate_memo_from_state() -> None:
     red = sum(1 for c in (claims or []) if isinstance(c, dict) and _is_red(c.get("status") or ""))
     overall = score.get("overall", 0)
     rec = score.get("recommendation", "Further Diligence")
-    state["memo"] = _build_written_briefing_memo(score, claims or [], rec, overall, verified, red)
+    b = score.get("breakdown") or {}
+    memo_lines = [
+        f"# Deal memo (auto-generated)",
+        "",
+        f"**Verdict:** {rec} — {overall}/10.",
+        "",
+        f"**Overall score:** {overall}/10 · **Recommendation:** {rec}",
+        "",
+        "## Score breakdown",
+        f"- Team: {b.get('team', 0)}/10",
+        f"- Market: {b.get('market', 0)}/10",
+        f"- Traction: {b.get('traction', 0)}/10",
+        f"- Competition: {b.get('competition', 0)}/10",
+        f"- Financials: {b.get('financials', 0)}/10",
+        "",
+        "## Claims",
+        f"- {verified} verified, {red} red flags, {len(claims or []) - verified - red} unverified.",
+        "",
+    ]
+    memo_text = "\n".join(memo_lines)
+    state["memo"] = memo_text
     voice_script = _build_voice_briefing_script(score, claims or [], rec, overall, verified, red)
     audio_filename = generate_audio(voice_script)
     if audio_filename:
@@ -830,8 +807,6 @@ def _ensure_voice_briefing_from_state() -> None:
         fallback = _ensure_fallback_audio()
         if fallback:
             state["audio_filename"] = fallback
-    # Written memo must match the voice (verdict, strengths, red flags, recommendation)
-    state["memo"] = _build_written_briefing_memo(score, claims or [], rec, overall, verified, red)
 
 
 async def _analyze_deck_internal(deck_text: str) -> dict:
