@@ -1,16 +1,13 @@
+"""Memo Writer — generates the investment memo and voice briefing.
+
+Produces two outputs:
+  1. A structured written investment memo (markdown)
+  2. A 60-90 second voice briefing script sent to edge-tts
+"""
+
 from strands import Agent, tool
 from tools.minimax_tts import generate_audio
 from agents import shared_state
-
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  HACKATHON BUILD — AWS Bedrock (Claude Sonnet 4) + MiniMax TTS             ║
-# ║  from strands.models.bedrock import BedrockModel                           ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
-
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  OPEN-SOURCE VERSION — Supports Ollama (local) / Groq / Together.ai        ║
-# ║  TTS now uses edge-tts (free, no API key). See minimax_tts.py              ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
 from model_config import get_model
 
 
@@ -53,17 +50,10 @@ Write like a senior partner briefing the investment committee.
 Keep the voice briefing under 200 words for a 60-90 second reading.
 Do NOT use emojis anywhere in the output."""
 
-# --- HACKATHON: AWS Bedrock ---
-# memo_writer = Agent(
-#     model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0"),
-#     system_prompt=MEMO_WRITER_PROMPT,
-#     tools=[save_investment_memo, generate_voice_memo],
-#     callback_handler=None
-# )
 
 memo_writer = Agent(
     model=get_model(),
     system_prompt=MEMO_WRITER_PROMPT,
     tools=[save_investment_memo, generate_voice_memo],
-    callback_handler=None
+    callback_handler=None,
 )

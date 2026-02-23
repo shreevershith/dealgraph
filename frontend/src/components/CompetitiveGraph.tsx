@@ -149,8 +149,19 @@ export default function CompetitiveGraph({
     setTooltip(null);
     setGraphError(false);
 
+    // One node per company: dedupe by name (case-insensitive), keep highest total_raised
+    const byName = new Map<string, (typeof competitors)[0]>();
+    for (const c of competitors) {
+      const key = c.name?.trim().toLowerCase() ?? "";
+      if (!key) continue;
+      const existing = byName.get(key);
+      if (!existing || (c.total_raised ?? 0) > (existing.total_raised ?? 0)) {
+        byName.set(key, { ...c, name: c.name?.trim() ?? c.name });
+      }
+    }
+    const graphCompetitors = Array.from(byName.values());
+
     // Ensure the target company exists in the data
-    const graphCompetitors = [...competitors];
     const hasTarget = graphCompetitors.some((c) => c.name === targetCompany);
     if (!hasTarget) {
       graphCompetitors.unshift({

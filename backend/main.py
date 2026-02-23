@@ -1,3 +1,13 @@
+"""DealGraph API — FastAPI backend for the AI due-diligence pipeline.
+
+Endpoints:
+  POST /api/analyze     — run the full claim-routed pipeline on pitch deck text
+  POST /api/extract-pdf — extract text from an uploaded PDF
+  GET  /api/audio/{fn}  — serve generated voice memos
+  GET  /api/health      — health check
+  POST /copilotkit      — CopilotKit AG-UI streaming endpoint
+"""
+
 import os
 import sys
 import asyncio
@@ -11,31 +21,6 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  HACKATHON BUILD — Datadog LLMObs (cloud observability)                    ║
-# ║  We used Datadog's LLM Observability (ddtrace) during the hackathon to     ║
-# ║  trace agent calls, LLM token usage, and tool invocations in real time.    ║
-# ║  Required DD_API_KEY and DD_SITE env vars.                                 ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
-# os.environ["DD_TRACE_OPENAI_AGENTS_ENABLED"] = "false"
-# try:
-#     import ddtrace
-#     ddtrace.config._disabled_integrations.add("openai_agents")
-# except Exception:
-#     pass
-# import logging as _lg
-# _lg.getLogger("ddtrace").setLevel(_lg.CRITICAL)
-# try:
-#     from ddtrace.llmobs import LLMObs
-#     LLMObs.enable(
-#         ml_app="dealgraph",
-#         api_key=os.getenv("DD_API_KEY"),
-#         site=os.getenv("DD_SITE", "datadoghq.com"),
-#         agentless_enabled=True,
-#     )
-# except Exception:
-#     pass
-
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -48,19 +33,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Langfuse: patch openai before strands/model_config so LLM calls are traced (optional)
+import telemetry
+telemetry._patch_langfuse_openai()
+
 from strands import Agent as StrandsNativeAgent, tool as strands_tool
 from ag_ui_strands import StrandsAgent, StrandsAgentConfig
 from ag_ui_strands.endpoint import EventEncoder, RunAgentInput
 
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  HACKATHON BUILD — AWS Bedrock (Claude Sonnet 4) for CopilotKit agent      ║
-# ║  from strands.models.bedrock import BedrockModel as StrandsBedrockModel    ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
-
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  OPEN-SOURCE VERSION — Supports Ollama (local) / Groq / Together.ai        ║
-# ║  Set LLM_PROVIDER env var to switch. See model_config.py for details.      ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
 from model_config import get_model
 
 logger = logging.getLogger("dealgraph")
@@ -71,6 +51,25 @@ logging.basicConfig(
 
 AUDIO_DIR = Path(__file__).parent / "audio"
 AUDIO_DIR.mkdir(exist_ok=True)
+
+FALLBACK_AUDIO_FILENAME = "fallback_memo.mp3"
+
+
+def _ensure_fallback_audio() -> str:
+    """Ensure fallback_memo.mp3 exists (e.g. when TTS fails). Returns filename or \"\"."""
+    fallback_path = AUDIO_DIR / FALLBACK_AUDIO_FILENAME
+    if fallback_path.exists():
+        return FALLBACK_AUDIO_FILENAME
+    try:
+        from tools.minimax_tts import generate_audio
+        short = "Deal memo summary not available."
+        fn = generate_audio(short)
+        if fn and (AUDIO_DIR / fn).exists():
+            (AUDIO_DIR / fn).rename(fallback_path)
+            return FALLBACK_AUDIO_FILENAME
+    except Exception as e:
+        logger.warning("Could not create fallback audio: %s", e)
+    return ""
 
 _raw = os.getenv("CORS_ORIGINS", "*").strip()
 CORS_ORIGINS = [o.strip() for o in _raw.split(",") if o.strip()]
@@ -119,6 +118,7 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+telemetry.setup_telemetry(app)
 
 MAX_DECK_TEXT_CHARS = 500_000
 AUDIO_MAX_AGE_SECONDS = 3600
@@ -218,6 +218,97 @@ def _extract_score_from_text(text: str) -> dict | None:
     }
 
 
+def _score_from_evidence(claims: list[dict]) -> dict:
+    """Build a score dict from normalized claims when the DealScorer did not run."""
+    def _is_red(s: str) -> bool:
+        s = (s or "").strip().lower()
+        return s == "red_flag" or "red" in s or s in ("contradicted", "flagged")
+    verified = sum(1 for c in claims if isinstance(c, dict) and (c.get("status") or "").strip().lower() == "verified")
+    red = sum(1 for c in claims if isinstance(c, dict) and _is_red(c.get("status") or ""))
+    n = len([c for c in claims if isinstance(c, dict)])
+    if n == 0:
+        return {"overall": 0, "breakdown": {}, "recommendation": "Further Diligence"}
+    # Base 5, +1.2 per verified, -1.5 per red flag, capped 0-10
+    overall = max(0, min(10, round(5 + verified * 1.2 - red * 1.5, 1)))
+    rec = "Strong Pass" if overall < 4 else "Pass" if overall < 5.5 else "Further Diligence" if overall < 7 else "Strong Interest" if overall < 8.5 else "Conviction Bet"
+    # Spread by category: average score for claims in each category
+    cat_scores = {"team": [], "market": [], "traction": [], "competition": [], "financials": []}
+    for c in claims:
+        if not isinstance(c, dict):
+            continue
+        cat = (c.get("category") or "traction").strip().lower()
+        st = (c.get("status") or "").strip().lower()
+        pts = 8 if st == "verified" else (3 if _is_red(st) else 5)
+        if cat in ("market_size", "market"):
+            cat_scores["market"].append(pts)
+        elif cat == "team":
+            cat_scores["team"].append(pts)
+        elif cat == "traction":
+            cat_scores["traction"].append(pts)
+        elif cat == "competition":
+            cat_scores["competition"].append(pts)
+        elif cat in ("financial", "financials"):
+            cat_scores["financials"].append(pts)
+    breakdown = {k: round(sum(v) / len(v), 1) if v else overall for k, v in cat_scores.items()}
+    return {"overall": overall, "breakdown": breakdown, "recommendation": rec}
+
+
+def _extract_competitors_from_web(web_results: list, company_name: str) -> list[dict]:
+    """Best-effort extraction of competitor names from raw Tavily search snippets."""
+    if not web_results:
+        return []
+    competitors = []
+    seen = set()
+    target_lower = company_name.lower() if company_name else ""
+    for batch in web_results:
+        if not isinstance(batch, list):
+            continue
+        for item in batch:
+            if not isinstance(item, dict):
+                continue
+            title = item.get("title", "")
+            # Titles like "Top 10 Brex Competitors" sometimes contain company names
+            snippet = item.get("snippet", "")
+            for text in [title, snippet]:
+                # Look for capitalized multi-word names that aren't the target company
+                import re as _re
+                for match in _re.findall(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b", text):
+                    name = match.strip()
+                    if (
+                        2 < len(name) < 40
+                        and name.lower() != target_lower
+                        and name.lower() not in seen
+                        and name.lower() not in ("the", "and", "for", "with", "from")
+                    ):
+                        seen.add(name.lower())
+                        competitors.append({
+                            "name": name,
+                            "total_raised": 0,
+                            "stage": "Unknown",
+                        })
+            if len(competitors) >= 8:
+                break
+        if len(competitors) >= 8:
+            break
+    return competitors[:8]
+
+
+def _dedupe_competitors_by_name(competitors: list[dict]) -> list[dict]:
+    """Keep one entry per company name (case-insensitive); prefer the one with highest total_raised."""
+    by_name: dict[str, dict] = {}
+    for c in competitors:
+        if not isinstance(c, dict):
+            continue
+        name = (c.get("name") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        existing = by_name.get(key)
+        if existing is None or (c.get("total_raised") or 0) > (existing.get("total_raised") or 0):
+            by_name[key] = {**c, "name": name}
+    return list(by_name.values())
+
+
 def _build_response_from_shared_state(company_name: str = "") -> dict | None:
     """Build API response from shared_state (reads from current request's context)."""
     from agents import shared_state
@@ -241,16 +332,34 @@ def _build_response_from_shared_state(company_name: str = "") -> dict | None:
     if "save_investment_memo>" in memo or "generate_voice_memo>" in memo:
         memo = re.sub(r"\s*(?:save_investment_memo|generate_voice_memo)\s*>\s*\{[\s\S]*$", "", memo).strip() or memo[:2000]
     audio_filename = state.get("audio_filename") or ""
+    if not audio_filename and (state.get("memo") or "").strip():
+        audio_filename = _ensure_fallback_audio() or ""
 
-    fact_checks_str = str(fact_checks_raw) if fact_checks_raw else ""
-    claims = _parse_json_from_text(fact_checks_str) if fact_checks_raw else None
-    if not isinstance(claims, list) or len(claims) == 0:
-        raw_claims_str = str(state.get("claims") or "")
-        if raw_claims_str:
-            claims = _parse_json_from_text(raw_claims_str)
-        if not isinstance(claims, list):
-            claims = None
+    # Prefer normalized evidence list from pipeline; fall back to fact_checks JSON string, then raw claims
+    evidence_list = state.get("evidence")
+    if isinstance(evidence_list, list) and len(evidence_list) > 0:
+        claims = [dict(e) for e in evidence_list]
+    else:
+        fact_checks_str = str(fact_checks_raw) if fact_checks_raw else ""
+        claims = _parse_json_from_text(fact_checks_str) if fact_checks_raw else None
+        if not isinstance(claims, list) or len(claims) == 0:
+            raw_claims_str = str(state.get("claims") or "")
+            if raw_claims_str:
+                claims = _parse_json_from_text(raw_claims_str)
+            if not isinstance(claims, list):
+                claims = None
     if isinstance(claims, list):
+        # Normalize evidence-style items (claim_id, claim_text, supporting_data) to frontend shape (id, text, evidence)
+        for c in claims:
+            if not isinstance(c, dict):
+                continue
+            if "text" not in c and c.get("claim_text"):
+                c["text"] = c["claim_text"]
+            if "evidence" not in c and c.get("supporting_data") is not None:
+                c["evidence"] = c["supporting_data"]
+            if "id" not in c and c.get("claim_id") is not None:
+                c["id"] = c["claim_id"]
+
         VALID_CATEGORIES = {"market_size", "traction", "team", "competition", "financial"}
         CATEGORY_ALIASES = {"market": "market_size", "financials": "financial"}
         VALID_STATUSES = {"verified", "unverified", "partial", "red_flag"}
@@ -264,7 +373,7 @@ def _build_response_from_shared_state(company_name: str = "") -> dict | None:
             raw_status = (c.get("status") or "").strip().lower().replace(" ", "_").replace("-", "_")
             if raw_status in VALID_STATUSES:
                 c["status"] = raw_status
-            elif "red" in raw_status or "flag" in raw_status:
+            elif "red" in raw_status or "flag" in raw_status or "contradict" in raw_status:
                 c["status"] = "red_flag"
             elif "verif" in raw_status:
                 c["status"] = "verified"
@@ -281,8 +390,15 @@ def _build_response_from_shared_state(company_name: str = "") -> dict | None:
     score = _parse_json_from_text(score_str) if score_raw else None
     if not isinstance(score, dict):
         score = _extract_score_from_text(score_str)
+    if not isinstance(score, dict) and isinstance(claims, list) and len(claims) > 0:
+        score = _score_from_evidence(claims)
     if not isinstance(score, dict):
         score = {"overall": 0, "breakdown": {}, "recommendation": "Further Diligence"}
+    # If score looks like the constant fallback (all 5s) but we have claims, derive from evidence
+    if isinstance(claims, list) and len(claims) > 0 and isinstance(score, dict):
+        b = score.get("breakdown") or {}
+        if score.get("overall") == 5 and all(b.get(k) == 5 for k in ("team", "market", "traction", "competition", "financials")):
+            score = _score_from_evidence(claims)
     if "breakdown" not in score:
         score["breakdown"] = {}
     for key in ("team", "market", "traction", "competition", "financials"):
@@ -314,6 +430,27 @@ def _build_response_from_shared_state(company_name: str = "") -> dict | None:
         logger.warning("find_competitors error: %s", e)
         competitors = []
 
+    # Fall back to web search results for competitor display when graph is empty
+    if not competitors:
+        web_results = state.get("web_search_results") or []
+        competitors = _extract_competitors_from_web(web_results, company_name)
+        if competitors:
+            logger.info("Populated %d competitors from web search results", len(competitors))
+    # If still empty and we have a company name, run a dedicated Tavily "X competitors" search
+    if not competitors and company_name:
+        try:
+            from tools.web_resolver import search_competitors
+            raw = search_competitors(company_name)
+            batch = [{"title": r.get("title", ""), "snippet": (r.get("content") or r.get("snippet", ""))[:500]} for r in raw]
+            competitors = _extract_competitors_from_web([batch], company_name) if batch else []
+            if competitors:
+                logger.info("Populated %d competitors from Tavily competitor search", len(competitors))
+        except Exception as e:
+            logger.warning("Tavily competitor search failed: %s", e)
+
+    # One node per company: Memgraph can return the same company for multiple markets
+    competitors = _dedupe_competitors_by_name(competitors)
+
     return {
         "status": "complete",
         "claims": claims if claims else [],
@@ -327,7 +464,12 @@ def _build_response_from_shared_state(company_name: str = "") -> dict | None:
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    try:
+        from tools.neo4j_tools import get_memgraph_status
+        memgraph = get_memgraph_status()
+    except Exception:
+        memgraph = "error"
+    return {"status": "ok", "memgraph": memgraph}
 
 
 @app.post("/api/extract-pdf")
@@ -459,6 +601,132 @@ def _extract_company_name(deck_text: str) -> str:
     return "Unknown Company"
 
 
+def _build_voice_briefing_script(
+    score: dict,
+    claims: list[dict],
+    recommendation: str,
+    overall: float,
+    verified_count: int,
+    red_count: int,
+) -> str:
+    """Build a 60-90 second spoken briefing: verdict, key strengths, red flags, recommendation.
+    Used when memo_writer did not produce a voice script; keeps tone conversational for TTS.
+    """
+    b = score.get("breakdown") or {}
+    parts = []
+
+    # Opening verdict
+    parts.append(
+        f"Deal score {overall} out of 10. Verdict: {recommendation}."
+    )
+
+    # Key strengths from verified claims (1-2 short phrases)
+    verified_claims = [
+        (c.get("text") or c.get("claim_text") or "").strip()
+        for c in claims
+        if isinstance(c, dict) and (c.get("status") or "").strip().lower() == "verified"
+    ]
+    if verified_claims:
+        strength = verified_claims[0][:120]
+        if len(verified_claims[0]) > 120:
+            strength = strength.rstrip() + "..."
+        parts.append(f" On the plus side, we verified: {strength}")
+    elif verified_count > 0:
+        parts.append(f" {verified_count} claims were verified with supporting data.")
+
+    # Red flags
+    if red_count > 0:
+        red_claims = [
+            (c.get("text") or c.get("claim_text") or "").strip()[:100]
+            for c in claims
+            if isinstance(c, dict)
+            and (
+                (c.get("status") or "").strip().lower() in ("red_flag", "contradicted", "flagged")
+                or "red" in (c.get("status") or "").lower()
+            )
+        ]
+        if red_claims:
+            parts.append(f" Red flags: {red_claims[0]}")
+        else:
+            parts.append(f" We have {red_count} red flags to follow up on.")
+    else:
+        parts.append(" No red flags identified.")
+
+    # Score snapshot and bottom line
+    parts.append(
+        f" Score breakdown: Team {b.get('team', 5)}, Market {b.get('market', 5)}, Traction {b.get('traction', 5)}, "
+        f"Competition {b.get('competition', 5)}, Financials {b.get('financials', 5)}."
+    )
+    parts.append(f" Bottom line: {recommendation}.")
+
+    script = " ".join(parts)
+    # Target ~150-200 words for 60-90 sec; trim if way over
+    words = script.split()
+    if len(words) > 220:
+        script = " ".join(words[:220]) + "."
+    return script
+
+
+def _build_written_briefing_memo(
+    score: dict,
+    claims: list[dict],
+    recommendation: str,
+    overall: float,
+    verified_count: int,
+    red_count: int,
+) -> str:
+    """Build the written memo to match the voice briefing: verdict, strengths, red flags, recommendation."""
+    b = score.get("breakdown") or {}
+    lines = [
+        "# Deal memo",
+        "",
+        f"**Verdict:** {recommendation} — {overall}/10.",
+        "",
+        "## Key strengths",
+    ]
+    verified_claims = [
+        (c.get("text") or c.get("claim_text") or "").strip()
+        for c in claims
+        if isinstance(c, dict) and (c.get("status") or "").strip().lower() == "verified"
+    ]
+    if verified_claims:
+        for v in verified_claims[:3]:
+            if v:
+                lines.append(f"- {v[:200]}" + ("..." if len(v) > 200 else ""))
+    elif verified_count > 0:
+        lines.append(f"- {verified_count} claims verified with supporting data.")
+    else:
+        lines.append("- No claims verified in this run.")
+    lines.append("")
+    lines.append("## Red flags")
+    if red_count > 0:
+        red_claims = [
+            (c.get("text") or c.get("claim_text") or "").strip()[:150]
+            for c in claims
+            if isinstance(c, dict)
+            and (
+                (c.get("status") or "").strip().lower() in ("red_flag", "contradicted", "flagged")
+                or "red" in (c.get("status") or "").lower()
+            )
+        ]
+        for r in red_claims[:3]:
+            if r:
+                lines.append(f"- {r}")
+        if not red_claims:
+            lines.append(f"- {red_count} red flag(s) to follow up.")
+    else:
+        lines.append("- None identified.")
+    lines.append("")
+    lines.append("## Score snapshot")
+    lines.append(
+        f"Team {b.get('team', 5)}/10 · Market {b.get('market', 5)}/10 · Traction {b.get('traction', 5)}/10 · "
+        f"Competition {b.get('competition', 5)}/10 · Financials {b.get('financials', 5)}/10."
+    )
+    lines.append("")
+    lines.append(f"**Bottom line:** {recommendation}.")
+    return "\n".join(lines)
+
+
 def _generate_memo_from_state() -> None:
     """Generate memo and voice briefing from shared_state when the memo_writer agent did not run.
     Writes state['memo'] and state['audio_filename'] so the pipeline always delivers a memo and audio.
@@ -477,51 +745,93 @@ def _generate_memo_from_state() -> None:
         score = _extract_score_from_text(str(score_raw)) if score_raw else None
     if not isinstance(score, dict):
         claims_for_score = _parse_json_from_text(str(fact_checks_raw)) if fact_checks_raw else None
-        verified = sum(1 for c in (claims_for_score or []) if isinstance(c, dict) and (c.get("status") or "").lower() == "verified")
-        red = sum(1 for c in (claims_for_score or []) if isinstance(c, dict) and "red" in (c.get("status") or "").lower())
-        overall = min(10, max(0, 5 + (verified - red) * 0.5))
-        rec = "Further Diligence" if overall < 7 else "Strong Interest" if overall < 8.5 else "Conviction Bet"
-        score = {
-            "overall": round(overall, 1),
-            "breakdown": {"team": overall, "market": overall, "traction": overall, "competition": overall, "financials": overall},
-            "recommendation": rec,
-        }
-        state["score"] = json.dumps(score)
+        if isinstance(claims_for_score, list) and len(claims_for_score) > 0:
+            score = _score_from_evidence(claims_for_score)
+            state["score"] = json.dumps(score)
+        else:
+            verified = sum(1 for c in (claims_for_score or []) if isinstance(c, dict) and (c.get("status") or "").lower() == "verified")
+            red = sum(1 for c in (claims_for_score or []) if isinstance(c, dict) and ("red" in (c.get("status") or "").lower() or (c.get("status") or "").lower() in ("contradicted", "flagged")))
+            overall = min(10, max(0, 5 + (verified - red) * 0.5))
+            rec = "Further Diligence" if overall < 7 else "Strong Interest" if overall < 8.5 else "Conviction Bet"
+            score = {
+                "overall": round(overall, 1),
+                "breakdown": {"team": overall, "market": overall, "traction": overall, "competition": overall, "financials": overall},
+                "recommendation": rec,
+            }
+            state["score"] = json.dumps(score)
     claims = _parse_json_from_text(str(fact_checks_raw)) if fact_checks_raw else None
-    def _status(s: str) -> str:
-        return ((s or "").strip().lower().replace(" ", "_").replace("-", "_"))
-    verified = sum(1 for c in (claims or []) if isinstance(c, dict) and _status(c.get("status")) == "verified")
-    red = sum(1 for c in (claims or []) if isinstance(c, dict) and "red" in _status(c.get("status")))
+    # Prefer evidence list so we get normalized status (red_flag vs contradicted/flagged)
+    evidence_list = state.get("evidence")
+    if isinstance(evidence_list, list) and len(evidence_list) > 0:
+        claims = [dict(e) for e in evidence_list]
+    elif not isinstance(claims, list) or len(claims) == 0:
+        claims = []
+    def _is_red(s: str) -> bool:
+        s = (s or "").strip().lower().replace(" ", "_").replace("-", "_")
+        return s == "red_flag" or "red" in s or s in ("contradicted", "flagged")
+    verified = sum(1 for c in (claims or []) if isinstance(c, dict) and (c.get("status") or "").strip().lower() == "verified")
+    red = sum(1 for c in (claims or []) if isinstance(c, dict) and _is_red(c.get("status") or ""))
     overall = score.get("overall", 0)
     rec = score.get("recommendation", "Further Diligence")
-    b = score.get("breakdown") or {}
-    memo_lines = [
-        f"# Deal memo (auto-generated)",
-        "",
-        f"**Overall score:** {overall}/10 · **Recommendation:** {rec}",
-        "",
-        "## Score breakdown",
-        f"- Team: {b.get('team', 0)}/10",
-        f"- Market: {b.get('market', 0)}/10",
-        f"- Traction: {b.get('traction', 0)}/10",
-        f"- Competition: {b.get('competition', 0)}/10",
-        f"- Financials: {b.get('financials', 0)}/10",
-        "",
-        "## Claims",
-        f"- {verified} verified, {red} red flags, {len(claims or []) - verified - red} unverified.",
-        "",
-    ]
-    memo_text = "\n".join(memo_lines)
-    state["memo"] = memo_text
-    voice_script = (
-        f"Deal score {overall} out of 10. Recommendation: {rec}. "
-        f"{verified} claims verified, {red} red flags. "
-        f"Team {b.get('team', 0)}, Market {b.get('market', 0)}, Traction {b.get('traction', 0)}."
-    )
+    state["memo"] = _build_written_briefing_memo(score, claims or [], rec, overall, verified, red)
+    voice_script = _build_voice_briefing_script(score, claims or [], rec, overall, verified, red)
     audio_filename = generate_audio(voice_script)
     if audio_filename:
         state["audio_filename"] = audio_filename
+    else:
+        fallback = _ensure_fallback_audio()
+        if fallback:
+            state["audio_filename"] = fallback
     logger.info("Generated deterministic memo and voice (overall=%s)", overall)
+
+
+def _ensure_voice_briefing_from_state() -> None:
+    """Always set voice memo to the 60-90 sec briefing (verdict, strengths, red flags, recommendation).
+    Overwrites any audio the agent may have set from the full written memo, so TTS never reads the long markdown.
+    """
+    from agents import shared_state
+    from tools.minimax_tts import generate_audio
+
+    state = shared_state.analysis_state
+    score_raw = state.get("score")
+    score = _parse_json_from_text(str(score_raw)) if score_raw else None
+    if not isinstance(score, dict):
+        score = _extract_score_from_text(str(score_raw)) if score_raw else None
+    if not isinstance(score, dict):
+        fact_checks_raw = state.get("fact_checks") or state.get("claims")
+        claims_for_score = _parse_json_from_text(str(fact_checks_raw)) if fact_checks_raw else None
+        if isinstance(claims_for_score, list) and len(claims_for_score) > 0:
+            score = _score_from_evidence(claims_for_score)
+        else:
+            return
+    evidence_list = state.get("evidence")
+    if isinstance(evidence_list, list) and len(evidence_list) > 0:
+        claims = [dict(e) for e in evidence_list]
+    else:
+        fact_checks_raw = state.get("fact_checks") or state.get("claims")
+        claims = _parse_json_from_text(str(fact_checks_raw)) if fact_checks_raw else None
+        if not isinstance(claims, list):
+            claims = []
+
+    def _is_red(s: str) -> bool:
+        s = (s or "").strip().lower().replace(" ", "_").replace("-", "_")
+        return s == "red_flag" or "red" in s or s in ("contradicted", "flagged")
+    verified = sum(1 for c in (claims or []) if isinstance(c, dict) and (c.get("status") or "").strip().lower() == "verified")
+    red = sum(1 for c in (claims or []) if isinstance(c, dict) and _is_red(c.get("status") or ""))
+    overall = score.get("overall", 0)
+    rec = score.get("recommendation", "Further Diligence")
+
+    voice_script = _build_voice_briefing_script(score, claims or [], rec, overall, verified, red)
+    audio_filename = generate_audio(voice_script)
+    if audio_filename:
+        state["audio_filename"] = audio_filename
+        logger.info("Voice memo set to 60-90s briefing (overall=%s)", overall)
+    else:
+        fallback = _ensure_fallback_audio()
+        if fallback:
+            state["audio_filename"] = fallback
+    # Written memo must match the voice (verdict, strengths, red flags, recommendation)
+    state["memo"] = _build_written_briefing_memo(score, claims or [], rec, overall, verified, red)
 
 
 async def _analyze_deck_internal(deck_text: str) -> dict:
@@ -551,6 +861,9 @@ async def _analyze_deck_internal(deck_text: str) -> dict:
         pipeline_error = str(e)
 
     _generate_memo_from_state()
+    # Always overwrite voice with 60-90s briefing (verdict, strengths, red flags, recommendation).
+    # Stops the agent from ever TTS-ing the full written memo.
+    _ensure_voice_briefing_from_state()
     result = _build_response_from_shared_state(company_name)
     if result:
         claims_ok = isinstance(result.get("claims"), list) and len(result["claims"]) > 0
@@ -567,12 +880,13 @@ async def _analyze_deck_internal(deck_text: str) -> dict:
             logger.info("Returning %s results", result["status"])
             return result
 
+    fallback_fn = _ensure_fallback_audio()
     return {
         "status": "error",
         "claims": [],
         "score": {"overall": 0, "breakdown": {"team": 0, "market": 0, "traction": 0, "competition": 0, "financials": 0}, "recommendation": "Analysis Failed"},
         "memo": f"Analysis pipeline failed for '{company_name}'. Error: {pipeline_error or 'Unknown'}",
-        "audio_url": "",
+        "audio_url": f"/api/audio/{fallback_fn}" if fallback_fn else "",
         "competitors": [],
         "company_name": company_name,
     }
@@ -607,12 +921,6 @@ def check_market(market_name: str) -> str:
     from tools.neo4j_tools import check_market_data
     return str(check_market_data(market_name))
 
-
-# --- HACKATHON: AWS Bedrock CopilotKit agent ---
-# _bedrock_model = StrandsBedrockModel(
-#     model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
-#     region_name=os.getenv("AWS_DEFAULT_REGION", "us-west-2"),
-# )
 
 _strands_agent = StrandsNativeAgent(
     model=get_model(),

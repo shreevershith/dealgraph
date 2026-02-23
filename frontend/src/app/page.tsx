@@ -615,8 +615,10 @@ function DealGraphApp() {
       >
         <span className="text-[10px] text-[var(--dg-dim)]">Built with</span>
         {[
-          { name: "Groq", color: "#f59e0b" },
+          { name: "FastAPI", color: "#009688" },
           { name: "Strands Agents", color: "#f59e0b" },
+          { name: "Groq · Ollama · OpenAI", color: "#f59e0b" },
+          { name: "Tavily", color: "#22c55e" },
           { name: "Memgraph", color: "#22c55e" },
           { name: "CopilotKit", color: "#a78bfa" },
           { name: "edge-tts", color: "#3b82f6" },

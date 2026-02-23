@@ -1,50 +1,88 @@
+"""Memgraph / Neo4j graph queries for VC knowledge-graph fact-checking.
+
+Memgraph is **optional**.  When ``MEMGRAPH_URI`` is empty or unset, every
+query function returns ``[]`` immediately and no driver is created.
+Set ``MEMGRAPH_URI=bolt://localhost:7687`` (or your Railway private URL)
+to enable graph-backed verification.
+"""
+
 import os
-from neo4j import GraphDatabase
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  HACKATHON BUILD — Neo4j AuraDB (cloud-managed graph database)             ║
-# ║  We used Neo4j AuraDB free tier during the hackathon with the neo4j        ║
-# ║  Python driver and Cypher queries for VC knowledge-graph fact-checking.    ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
-# NEO4J_URI = os.getenv("NEO4J_URI")
-# NEO4J_USER = os.getenv("NEO4J_USER")
-# NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
-#
-# driver = None
-# if NEO4J_URI and NEO4J_USER and NEO4J_PASSWORD:
-#     driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  OPEN-SOURCE VERSION — Memgraph (self-hosted, Bolt-compatible)             ║
-# ║  Memgraph speaks the same Bolt protocol and Cypher query language as       ║
-# ║  Neo4j, so the same Python driver and all queries below work unchanged.    ║
-# ║  Run Memgraph via: docker compose up memgraph                              ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
-MEMGRAPH_URI = os.getenv("MEMGRAPH_URI", "bolt://localhost:7687")
+MEMGRAPH_URI = os.getenv("MEMGRAPH_URI", "").strip()
 MEMGRAPH_USER = os.getenv("MEMGRAPH_USER", "")
 MEMGRAPH_PASSWORD = os.getenv("MEMGRAPH_PASSWORD", "")
 
+GRAPH_ENABLED = bool(MEMGRAPH_URI)
+
 driver = None
-try:
-    auth = (MEMGRAPH_USER, MEMGRAPH_PASSWORD) if MEMGRAPH_USER else None
-    driver = GraphDatabase.driver(MEMGRAPH_URI, auth=auth)
-    driver.verify_connectivity()
-    print("[DealGraph] Connected to Memgraph")
-except Exception as e:
-    print(f"[DealGraph] Memgraph connection skipped: {e}")
-    driver = None
+
+
+def _get_driver():
+    """Lazy driver: connect on first use so production can connect after Memgraph is ready."""
+    global driver
+    if not GRAPH_ENABLED:
+        return None
+    if driver is not None:
+        return driver
+    try:
+        from neo4j import GraphDatabase
+        auth = (MEMGRAPH_USER, MEMGRAPH_PASSWORD) if MEMGRAPH_USER else None
+        d = GraphDatabase.driver(MEMGRAPH_URI, auth=auth)
+        d.verify_connectivity()
+        driver = d
+        print("[DealGraph] Connected to Memgraph")
+        return driver
+    except Exception as e:
+        print(f"[DealGraph] Memgraph connection failed: {e}")
+        return None
+
+
+if GRAPH_ENABLED:
+    try:
+        from neo4j import GraphDatabase
+        auth = (MEMGRAPH_USER, MEMGRAPH_PASSWORD) if MEMGRAPH_USER else None
+        driver = GraphDatabase.driver(MEMGRAPH_URI, auth=auth)
+        driver.verify_connectivity()
+        print("[DealGraph] Connected to Memgraph")
+    except Exception as e:
+        print(f"[DealGraph] Memgraph connection skipped at startup: {e}")
+        driver = None
+else:
+    print("[DealGraph] Memgraph disabled (MEMGRAPH_URI not set)")
+
+
+def get_memgraph_status() -> str:
+    """Return 'ok', 'disabled', or 'error' for health checks."""
+    if not GRAPH_ENABLED:
+        return "disabled"
+    d = driver if driver is not None else _get_driver()
+    if not d:
+        return "error"
+    try:
+        with d.session() as session:
+            session.run("RETURN 1")
+        return "ok"
+    except Exception:
+        return "error"
 
 
 def run_query(cypher: str, params: dict = None) -> list:
     """Execute a Cypher query and return results as list of dicts."""
-    if not driver:
+    if not GRAPH_ENABLED:
         return []
-    with driver.session() as session:
-        result = session.run(cypher, params or {})
-        return [record.data() for record in result]
+    d = driver if driver is not None else _get_driver()
+    if not d:
+        return []
+    try:
+        with d.session() as session:
+            result = session.run(cypher, params or {})
+            return [record.data() for record in result]
+    except Exception as e:
+        print(f"[DealGraph] Memgraph query failed: {e}")
+        return []
 
 
 def find_competitors(company_name: str) -> list:

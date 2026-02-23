@@ -11,7 +11,11 @@ PyPDF2
 edge-tts
 openai
 ollama
-
-# ── HACKATHON DEPENDENCIES (no longer needed for open-source build) ──
-# boto3              # AWS SDK — was used for Bedrock (Claude Sonnet 4)
-# ddtrace            # Datadog APM/LLMObs tracing
+tavily-python
+# Optional telemetry
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-otlp-proto-http
+opentelemetry-instrumentation-fastapi
+langfuse

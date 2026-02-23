@@ -4,6 +4,17 @@ Uses contextvars so concurrent requests don't corrupt each other.
 asyncio.to_thread copies the context, so tools running inside a
 Strands Agent thread see (and mutate) the same dict that the
 calling async handler set up.
+
+State keys:
+  claims             — raw extracted claims (JSON string from ClaimExtractor)
+  classified_claims  — ClaimRouter output (list of dicts with category)
+  evidence           — normalized evidence from all resolvers (list of dicts)
+  web_search_results — raw Tavily results for frontend display
+  fact_checks        — legacy compatibility alias for evidence
+  score              — deal score JSON
+  memo               — investment memo text
+  audio_filename     — generated audio file name
+  competitors        — competitor list for D3 graph visualization
 """
 
 import contextvars
@@ -11,6 +22,9 @@ from copy import deepcopy
 
 _DEFAULT = {
     "claims": [],
+    "classified_claims": [],
+    "evidence": [],
+    "web_search_results": [],
     "fact_checks": [],
     "score": {},
     "memo": "",

@@ -1,14 +1,11 @@
+"""Claim Extractor — pulls every verifiable claim from a pitch deck.
+
+Produces a structured JSON list of claims, each tagged with a category
+(market_size, traction, team, competition, financial) and a verifiable flag.
+This is the first step in the DealGraph pipeline.
+"""
+
 from strands import Agent, tool
-
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  HACKATHON BUILD — AWS Bedrock (Claude Sonnet 4)                           ║
-# ║  from strands.models.bedrock import BedrockModel                           ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
-
-# ╔══════════════════════════════════════════════════════════════════════════════╗
-# ║  OPEN-SOURCE VERSION — Supports Ollama (local) / Groq / Together.ai        ║
-# ║  Set LLM_PROVIDER env var to switch. See model_config.py for details.      ║
-# ╚══════════════════════════════════════════════════════════════════════════════╝
 from model_config import get_model
 
 
@@ -41,17 +38,10 @@ Categories:
 Be thorough. Extract at least 5-10 claims. Focus on claims that CAN be checked against external data.
 Output ONLY valid JSON - no explanation, no markdown fences, no emojis."""
 
-# --- HACKATHON: AWS Bedrock ---
-# claim_extractor = Agent(
-#     model=BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0"),
-#     system_prompt=CLAIM_EXTRACTOR_PROMPT,
-#     tools=[parse_pitch_deck],
-#     callback_handler=None
-# )
 
 claim_extractor = Agent(
     model=get_model(),
     system_prompt=CLAIM_EXTRACTOR_PROMPT,
     tools=[parse_pitch_deck],
-    callback_handler=None
+    callback_handler=None,
 )

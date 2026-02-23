@@ -18,8 +18,9 @@ venv/
 .env.local
 .env.*.local
 
-# Audio
+# Audio (generated voice memos)
 audio/*.mp3
+backend/audio/*.mp3
 
 # IDE
 .vscode/
