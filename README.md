@@ -20,6 +20,7 @@ AI-powered due diligence copilot for venture capital investors. Upload any start
 - [Telemetry](#telemetry-optional)
 - [Deployment](#deployment)
 - [Troubleshooting](#troubleshooting)
+- [Credits](#credits)
 - [License](#license)
 
 ## Overview
@@ -319,6 +320,14 @@ MEMGRAPH_URI=bolt://memgraph.railway.internal:7687
 **Problem**: Langfuse shows no data
 
 **Solution**: Set `LANGFUSE_SECRET_KEY` and `LANGFUSE_PUBLIC_KEY` on the **backend** (e.g. Railway Variables). Use an LLM provider that goes through the patched client (Groq, Together, or OpenAI — not Ollama). Redeploy and run an analysis; check deploy logs for `Langfuse: openai module patched for LLM tracing`.
+
+## Credits
+
+DealGraph was built as part of the **AWS x Anthropic x Datadog GenAI Hackathon**, hosted by **B.E.L.L.E Community** on **Friday, February 20** at the **AWS Builder Loft, San Francisco**.
+
+**Originally built with (hackathon stack):** Amazon Bedrock, [Strands Agents](https://github.com/strands-agents/sdk-python), **Datadog** observability (dashboards, LLM Observability, Datadog MCP), **Neo4j** (graph database), **MiniMax** for TTS, **CopilotKit** and **TestSprite** (automated tests) per the hackathon’s core infrastructure requirements. The agent pipeline and claim-routed verification design came from this build.
+
+**Current stack:** The codebase has since been extended to support multiple LLM providers **(Groq, Ollama, Together.ai, OpenAI)**, **Tavily** for web verification, optional **Memgraph** for the knowledge graph, **edge-tts** for voice memos, and optional **SigNoz** / **Langfuse** for observability, with Strands Agents remaining at the core of the pipeline.
 
 ## License
 
