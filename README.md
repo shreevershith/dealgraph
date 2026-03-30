@@ -2,13 +2,8 @@
 
 AI-powered due diligence copilot for venture capital investors. Upload any startup's pitch deck and get a confidence-scored investment analysis with verified claims, competitive intelligence, and a voice-narrated deal memo.
 
-## Live Demo
-
-**[→ DealGraph (dealgraph-pink.vercel.app)](https://dealgraph-pink.vercel.app/)**
-
 ## Table of Contents
 
-- [Live Demo](#live-demo)
 - [Overview](#overview)
 - [Key Features](#key-features)
 - [Tech Stack](#tech-stack)
