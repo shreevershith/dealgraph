@@ -41,6 +41,48 @@ from strands import Agent as StrandsNativeAgent, tool as strands_tool
 from ag_ui_strands import StrandsAgent, StrandsAgentConfig
 from ag_ui_strands.endpoint import EventEncoder, RunAgentInput
 
+
+def _patch_ag_ui_strands_agent_state() -> None:
+    """ag_ui_strands expects agent.state._state; strands uses JSONSerializableDict (snapshot via .get())."""
+    import ag_ui_strands.agent as _agui_agent
+
+    def _fixed_init(self, agent, name: str, description: str = "", config=None):
+        self._model = agent.model
+        self._system_prompt = agent.system_prompt
+        self._tools = (
+            list(agent.tool_registry.registry.values())
+            if hasattr(agent, "tool_registry")
+            else []
+        )
+        self._agent_kwargs = {
+            "record_direct_tool_call": agent.record_direct_tool_call
+            if hasattr(agent, "record_direct_tool_call")
+            else True,
+        }
+        if hasattr(agent, "trace_attributes") and agent.trace_attributes:
+            self._agent_kwargs["trace_attributes"] = agent.trace_attributes
+        if hasattr(agent, "agent_id") and agent.agent_id:
+            self._agent_kwargs["agent_id"] = agent.agent_id
+        if hasattr(agent, "state") and agent.state is not None:
+            st = agent.state
+            if hasattr(st, "_state"):
+                self._agent_kwargs["state"] = st._state
+            elif callable(getattr(st, "get", None)):
+                self._agent_kwargs["state"] = st.get()
+            else:
+                self._agent_kwargs["state"] = st
+
+        self.name = name
+        self.description = description
+        self.config = config or StrandsAgentConfig()
+        self._agents_by_thread = {}
+        self._proxy_tool_names_by_thread = {}
+
+    _agui_agent.StrandsAgent.__init__ = _fixed_init
+
+
+_patch_ag_ui_strands_agent_state()
+
 from model_config import get_model
 
 logger = logging.getLogger("dealgraph")

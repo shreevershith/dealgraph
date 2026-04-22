@@ -251,8 +251,9 @@ def seed():
 
         for company in ["Acme Payments", "VitalQuest"]:
             result = session.run("""
-                MATCH (c:Company {name: $name})-[:OPERATES_IN]->(m:Market)<-[:OPERATES_IN]-(comp:Company)
+                MATCH (c:Company {name: $name})-[:OPERATES_IN]->(:Market)<-[:OPERATES_IN]-(comp:Company)
                 WHERE comp.name <> c.name
+                WITH DISTINCT comp
                 RETURN comp.name AS name, comp.total_raised AS raised
                 ORDER BY comp.total_raised DESC
             """, {"name": company})

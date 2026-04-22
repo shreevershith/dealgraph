@@ -100,10 +100,16 @@ def find_competitors(company_name: str) -> list:
     WITH c LIMIT 1
     MATCH (c)-[:OPERATES_IN]->(m:Market)<-[:OPERATES_IN]-(comp:Company)
     WHERE comp.name <> c.name
-    RETURN comp.name AS name, comp.total_raised AS total_raised, comp.stage AS stage, comp.employee_count AS employee_count, m.name AS market
+    WITH comp, collect(DISTINCT m.name) AS markets
+    RETURN comp.name AS name, comp.total_raised AS total_raised, comp.stage AS stage,
+           comp.employee_count AS employee_count, markets
     ORDER BY comp.total_raised DESC
     """
-    return run_query(cypher, {"name": company_name})
+    rows = run_query(cypher, {"name": company_name})
+    for row in rows:
+        ms = row.pop("markets", None) or []
+        row["market"] = ", ".join(sorted(ms)) if ms else None
+    return rows
 
 
 def verify_founder(founder_name: str) -> list:
